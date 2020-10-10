@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.2)
-project(divider)
+project(md5app)
 
-#add_subdirectory(md5)
+add_subdirectory(md5)
 set(SOURCE_FILES main.cpp)
 
-add_executable(divider ${SOURCE_FILES})
-#target_link_libraries(divider division)
-install(TARGETS divider DESTINATION ${DIVISIBLE_INSTALL_BIN_DIR})
+add_executable(md5app ${SOURCE_FILES})
+target_link_libraries(md5app md5)
+install(TARGETS md5app DESTINATION ${PROJECT_INSTALL_BIN_DIR})

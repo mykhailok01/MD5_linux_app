@@ -3,7 +3,7 @@ project(divider_tests)
 
 add_subdirectory(lib/googletest)
 
-include_directories(${DIVISION_HEADERS_DIR})
+include_directories(${MD_HEADERS_DIR})
 include_directories(lib/googletest/googletest/include)
 
 set(SOURCE_FILES main.cpp src/divider_tests.cpp)
