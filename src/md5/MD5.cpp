@@ -7,6 +7,11 @@
 #include <limits>
 using Chunk = std::array<std::uint32_t, 16>;// 512 bit
 constexpr size_t CHUNK_SIZE = sizeof(Chunk::value_type) * 16;
+constexpr auto BITS_CHUNK_SIZE = static_cast<std::uint64_t>(CHUNK_SIZE) * CHAR_BIT;
+constexpr uint64_t BITS_SIZE_PART_SIZE = sizeof(uint64_t) * CHAR_BIT;
+constexpr size_t CHUNK_PART_SIZE = sizeof(Chunk::value_type) * CHAR_BIT;
+
+
 
 template <typename I> std::string toString(I val, size_t hexLen = sizeof(I)<<1) 
 {
@@ -20,10 +25,11 @@ template <typename I> std::string toString(I val, size_t hexLen = sizeof(I)<<1)
 std::string toString(const Chunk &chunk)
 {
     std::string result;
-    for(size_t i = 0; i < chunk.size(); ++i)
+    for(size_t i = 0; i < chunk.size() - 1; ++i)
     {
-        result += toString(chunk[i]);
+        result += toString(chunk[i]) + " ";
     }
+    result += toString(chunk.back());
     return result;
 }
 
@@ -55,12 +61,27 @@ std::vector<Chunk> toChunks(const std::string& data)
         }
         result.push_back(chunk);
     }
+    if (result.empty())
+        result.push_back(Chunk());
     return result;
 }
 
-void insertDataSize(std::vector<Chunk> &chunks, std::uint64_t bitsSize)
+void alignSizeTo448Mod512(std::vector<Chunk> &chunks, std::uint64_t bitsDataSize)
 {
-    return;
+    if (bitsDataSize >= BITS_CHUNK_SIZE * chunks.size() - BITS_SIZE_PART_SIZE)
+        chunks.push_back(Chunk());
+}
+
+void insertLeadingBit(std::vector<Chunk> &chunks, std::uint64_t bitsDataSize)
+{
+    auto lastDataChunkIndex = bitsDataSize / BITS_CHUNK_SIZE;
+    Chunk &lastDataChunk = chunks[lastDataChunkIndex];
+    auto bitsDataSizeRest = (bitsDataSize % BITS_CHUNK_SIZE);
+    auto &lastDataChunkPart = lastDataChunk[bitsDataSizeRest / CHUNK_PART_SIZE];
+    bitsDataSizeRest %= CHUNK_PART_SIZE;
+
+    std::cout << "\n" << CHUNK_PART_SIZE << " " <<  bitsDataSizeRest << " " << (1ull << (CHUNK_PART_SIZE - bitsDataSizeRest)) << "\n";
+    lastDataChunkPart |= (1ul << (CHUNK_PART_SIZE - bitsDataSizeRest - 1));
 }
 
 std::array<std::uint32_t, 4> generateMD5Hash(const std::string &data)
@@ -68,13 +89,12 @@ std::array<std::uint32_t, 4> generateMD5Hash(const std::string &data)
     static_assert(CHAR_BIT == 8, "generateMD5Hash requires byte to be 8 bit long");
     static_assert(sizeof(size_t) == 8 || sizeof(size_t) == 4, "generateMD5Hash requires size_t to be 8 or 4 bytes ");
 
-    std::uint64_t bitsSize = static_cast<std::uint64_t>(data.size()) * sizeof(std::string::value_type) * CHAR_BIT;
-    assert(bitsSize == std::numeric_limits<std::uint64_t>::max());
+    std::uint64_t bitsDataSize = static_cast<std::uint64_t>(data.size()) * sizeof(std::string::value_type) * CHAR_BIT;
+    assert(bitsDataSize != std::numeric_limits<std::uint64_t>::max());
 
     auto chunks = toChunks(data);
-    constexpr auto BITS_CHUNK_SIZE = CHUNK_SIZE * CHAR_BIT;
-    // if (bitsSize >= BITS_CHUNK_SIZE * chunks.size())
-    // chunks[][bitsSize % BITS_CHUNK_SIZE]
+    alignSizeTo448Mod512(chunks, bitsDataSize);
+    insertLeadingBit(chunks, bitsDataSize);
     for(size_t i = 0; i < chunks.size(); ++i)
     {
         std::cout << toString(chunks[i]) << " ";
@@ -85,9 +105,10 @@ std::array<std::uint32_t, 4> generateMD5Hash(const std::string &data)
 std::string toString(const MD5Hash &hash)
 {
     std::string result;
-    for(size_t i = 0; i < hash.size(); ++i)
+    for(size_t i = 0; i < hash.size() - 1; ++i)
     {
-        result += toString(hash[i]);
+        result += toString(hash[i]) + " ";
     }
+    result += hash.back();
     return result;
 }

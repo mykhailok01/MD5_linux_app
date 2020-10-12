@@ -2,5 +2,7 @@
 #include <iostream>
 
 int main(int argc, const char *argv[]) {
-    std::cout << toString(generateMD5Hash("abc"));
+    toString(generateMD5Hash("a"));
+    std::cout << "\n";
+    toString(generateMD5Hash(""));
 }
