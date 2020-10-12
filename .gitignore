@@ -54,3 +54,4 @@ lib/*
 lib64/*
 bin/*
 test/test_runner
+MD5.sublime-workspace
