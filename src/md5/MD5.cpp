@@ -5,21 +5,28 @@
 #include <vector>
 #include <iostream>
 #include <limits>
+#include <bitset>
 using Chunk = std::array<std::uint32_t, 16>;// 512 bit
 constexpr size_t CHUNK_SIZE = sizeof(Chunk::value_type) * 16;
 constexpr auto BITS_CHUNK_SIZE = static_cast<std::uint64_t>(CHUNK_SIZE) * CHAR_BIT;
 constexpr uint64_t BITS_SIZE_PART_SIZE = sizeof(uint64_t) * CHAR_BIT;
-constexpr size_t CHUNK_PART_SIZE = sizeof(Chunk::value_type) * CHAR_BIT;
+constexpr size_t BITS_CHUNK_PART_SIZE = sizeof(Chunk::value_type) * CHAR_BIT;
 
 
-
-template <typename I> std::string toString(I val, size_t hexLen = sizeof(I)<<1) 
+template <typename I> 
+std::string toString(I val, size_t hexLen = sizeof(I)<<1) 
 {
     static const char* digits = "0123456789ABCDEF";
     std::string result(hexLen,'0');
     for (size_t i=0, j=(hexLen-1)*4 ; i<hexLen; ++i,j-=4)
         result[i] = digits[(val>>j) & 0x0f];
     return result;
+}
+
+template <typename I, uint64_t binLen = sizeof(I) * CHAR_BIT> 
+std::string toBinaryStr(I val)
+{
+    return std::bitset<binLen>(val).to_string();
 }
 
 std::string toString(const Chunk &chunk)
@@ -70,36 +77,59 @@ void alignSizeTo448Mod512(std::vector<Chunk> &chunks, std::uint64_t bitsDataSize
         chunks.push_back(Chunk());
 }
 
+Chunk::value_type revertBytes(Chunk::value_type value)
+{
+    auto selectByte = [] (Chunk::value_type val, size_t i)->Chunk::value_type 
+    {
+        size_t firstBit = i * CHAR_BIT;
+        val = val << firstBit >> firstBit;
+        size_t bitsToEnd = BITS_CHUNK_PART_SIZE - firstBit - CHAR_BIT;
+        val = val >> bitsToEnd << bitsToEnd;
+        return val;
+    };  
+    return selectByte(value, 0) >> (BITS_CHUNK_PART_SIZE - CHAR_BIT) | 
+        selectByte(value, 1) >> CHAR_BIT |
+        selectByte(value, 2) << CHAR_BIT |
+        selectByte(value, 3) << (BITS_CHUNK_PART_SIZE - CHAR_BIT);
+}
+
 void insertLeadingBit(std::vector<Chunk> &chunks, std::uint64_t bitsDataSize)
 {
     auto lastDataChunkIndex = bitsDataSize / BITS_CHUNK_SIZE;
     Chunk &lastDataChunk = chunks[lastDataChunkIndex];
     auto bitsDataSizeRest = (bitsDataSize % BITS_CHUNK_SIZE);
-    auto &lastDataChunkPart = lastDataChunk[bitsDataSizeRest / CHUNK_PART_SIZE];
-    bitsDataSizeRest %= CHUNK_PART_SIZE;
-
-    std::cout << "\n" << CHUNK_PART_SIZE << " " <<  bitsDataSizeRest << " " << (1ull << (CHUNK_PART_SIZE - bitsDataSizeRest)) << "\n";
-    lastDataChunkPart |= (1ul << (CHUNK_PART_SIZE - bitsDataSizeRest - 1));
+    auto &lastDataChunkPart = lastDataChunk[bitsDataSizeRest / BITS_CHUNK_PART_SIZE];
+    bitsDataSizeRest %= BITS_CHUNK_PART_SIZE;
+    lastDataChunkPart |= (1ul << (BITS_CHUNK_PART_SIZE - bitsDataSizeRest - 1));
 }
 
 void insertDataSize(std::vector<Chunk> &chunks, std::uint64_t bitsDataSize)
 {
     auto &lastChunk = chunks.back();
     auto &lastChunkPart = lastChunk.back();
-    lastChunkPart = bitsDataSize << CHUNK_PART_SIZE >> CHUNK_PART_SIZE;
+    lastChunkPart = revertBytes(bitsDataSize >> BITS_CHUNK_PART_SIZE);
     auto &penultimateChunkPart = lastChunk[lastChunk.size() - 2]; 
-    penultimateChunkPart = bitsDataSize >> CHUNK_PART_SIZE;
+    penultimateChunkPart = revertBytes(bitsDataSize << BITS_CHUNK_PART_SIZE >> BITS_CHUNK_PART_SIZE);
+}
+
+Chunk::value_type leftRotate(Chunk::value_type value, size_t amount)
+{
+    assert(amount <= 31);
+    Chunk::value_type mask = (1u << amount) - 1;
+    Chunk::value_type left = value << amount;
+    Chunk::value_type right = value >> (BITS_CHUNK_PART_SIZE - amount);
+    return (left & ~mask) | (right & mask);
 }
 
 MD5Hash calculateMD5Hash(const std::vector<Chunk> &chunks)
 {
-    std::array<std::uint32_t, 64> s = {
+    constexpr std::array<std::size_t, 64> s = {
         7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
         5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,
         4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
         6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21
     };
-    std::array<std::uint32_t, 64> K = {
+    constexpr std::array<std::uint32_t, 64> K = {
         0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
         0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
         0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be,
@@ -123,7 +153,56 @@ MD5Hash calculateMD5Hash(const std::vector<Chunk> &chunks)
         0x98badcfe,// C
         0x10325476 // D
     };
+    for (const auto& chunk : chunks)
+    {
+        MD5Hash tmpHash = hash;
+        for (size_t i = 0; i < K.size(); ++i)
+        {  
+            MD5Hash::value_type F = 0;
+            size_t g = 0;
+
+            if (0 <= i && i <= 15)
+            {
+                F = (tmpHash[1] & tmpHash[2]) | (~tmpHash[1] & tmpHash[3]);
+                g = i;
+            }
+            else if (16 <= i && i <= 31)
+            {
+                F = (tmpHash[3] & tmpHash[1]) | (~tmpHash[3] & tmpHash[2]);
+                g = (5 * i + 1) % 16;
+            }
+            else if (32 <= i && i <= 47)
+            {
+                F = tmpHash[1] ^ tmpHash[2] ^ tmpHash[3];
+                g = (3 * i + 5) % 16;
+            }
+            else if (48 <= i && i <= 63)
+            {
+                F = tmpHash[2] ^ (tmpHash[1] | (~tmpHash[3]));
+                g = (7 * i) % 16;
+            }
+            F = (F + tmpHash[0] + K[i] + chunk[g]) & ~std::uint32_t(0);
+            tmpHash[0] = tmpHash[3];
+            tmpHash[3] = tmpHash[2];
+            tmpHash[2] = tmpHash[1];
+            tmpHash[1] = tmpHash[1] + leftRotate(F, s[i]);
+        }
+        for (size_t i = 0; i < hash.size(); ++i)
+        {
+            hash[i] += tmpHash[i];
+        }
+    }
+    for (auto& val : hash)
+        val = revertBytes(val);
+
     return hash;
+}
+
+void revertBytesInEachChunk(std::vector<Chunk>& chunks)
+{
+    for(auto &chunk: chunks)
+        for(auto & word: chunk)
+            word = revertBytes(word);
 }
 
 std::array<std::uint32_t, 4> generateMD5Hash(const std::string &data)
@@ -133,16 +212,12 @@ std::array<std::uint32_t, 4> generateMD5Hash(const std::string &data)
 
     std::uint64_t bitsDataSize = static_cast<std::uint64_t>(data.size()) * sizeof(std::string::value_type) * CHAR_BIT;
     assert(bitsDataSize != std::numeric_limits<std::uint64_t>::max());
-
     auto chunks = toChunks(data);
     alignSizeTo448Mod512(chunks, bitsDataSize);
     insertLeadingBit(chunks, bitsDataSize);
     insertDataSize(chunks, bitsDataSize);
-    for(size_t i = 0; i < chunks.size(); ++i)
-    {
-        std::cout << toString(chunks[i]) << " ";
-    }
-    return {1,1,1,1};
+    revertBytesInEachChunk(chunks);
+    return calculateMD5Hash(chunks);
 }
 
 std::string toString(const MD5Hash &hash)
@@ -150,6 +225,6 @@ std::string toString(const MD5Hash &hash)
     std::string result;
     for(size_t i = 0; i < hash.size() - 1; ++i)
         result += toString(hash[i]) + " ";
-    result += hash.back();
+    result += toString(hash.back());
     return result;
 }
