@@ -223,8 +223,7 @@ std::array<std::uint32_t, 4> generateMD5Hash(const std::string &data)
 std::string toString(const MD5Hash &hash)
 {
     std::string result;
-    for(size_t i = 0; i < hash.size() - 1; ++i)
-        result += toString(hash[i]) + " ";
-    result += toString(hash.back());
+    for(size_t i = 0; i < hash.size(); ++i)
+        result += toString(hash[i]);
     return result;
 }

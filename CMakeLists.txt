@@ -17,6 +17,4 @@ include_directories(${PROJECT_INSTALL_INCLUDE_DIR})
 include_directories(${MD5_HEADERS_DIR})
 
 add_subdirectory(src)
-#add_subdirectory(test)
-
-
+add_subdirectory(test)
