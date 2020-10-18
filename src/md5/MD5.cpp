@@ -56,7 +56,7 @@ std::vector<Chunk> toChunks(const std::string& data)
     std::vector<Chunk> result;
     for(size_t chunckBeginning = 0; chunckBeginning < data.size(); chunckBeginning += 64)
     {
-        Chunk chunk;
+        Chunk chunk = {};
         for (size_t index32Bit = 0, dataIndex = chunckBeginning;
             index32Bit < chunk.size() && dataIndex < data.size();
             index32Bit++)
