@@ -31,14 +31,24 @@ int main(int argc, const char *argv[])
 
     if (file)
     {
-        std::ifstream inFs(input, std::ios::binary | std::ios::ate);
-        std::streamsize size = inFs.tellg();
-        inFs.seekg(0, std::ios::beg);
-        std::string content(size, '\0');
-        if (inFs.read(content.data(), size))
-        {
-            std::cout << toString(generateMD5Hash(content));
-        }
+        
+            std::ifstream inFs(input, std::ios::binary | std::ios::ate | std::ios::in);
+            if (inFs.good())
+            {
+                std::streamsize size = inFs.tellg();
+                inFs.seekg(0, std::ios::beg);
+                std::string content(size, '\0');
+                if (inFs.read(content.data(), size))
+                {
+                    std::cout << toString(generateMD5Hash(content));
+                }
+            }
+            else
+            {
+                std::cerr << "Failed to read file: " << input << '\n';
+                exit(0);
+            }
+
     }
     else
         std::cout << toString(generateMD5Hash(input));
