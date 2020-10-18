@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.2)
 project(md5app)
 
 add_subdirectory(md5)
+include_directories(md5)
+
+add_subdirectory(argparse)
+include_directories(argparse/include)
+
 set(SOURCE_FILES main.cpp)
 
 add_executable(md5app ${SOURCE_FILES})
